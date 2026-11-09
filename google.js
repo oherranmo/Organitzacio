@@ -3,6 +3,7 @@
   const SCOPE = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly";
   const API = "https://www.googleapis.com/calendar/v3";
   let token = null, exp = 0, msg = "";
+  try { const t = JSON.parse(localStorage.getItem("organitzam.gtoken") || "null"); if (t && t.exp > Date.now() + 60000) { token = t.token; exp = t.exp; } } catch {}
   const on = () => S.google && S.google.clientId && S.google.connected;
   const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -17,15 +18,15 @@
     return new Promise((ok, ko) => {
       const tc = google.accounts.oauth2.initTokenClient({
         client_id: S.google.clientId, scope: SCOPE,
-        callback: (r) => { if (r.error) return ko(new Error(r.error)); token = r.access_token; exp = Date.now() + r.expires_in * 1000; ok(token); },
+        callback: (r) => { if (r.error) return ko(new Error(r.error)); token = r.access_token; exp = Date.now() + r.expires_in * 1000; S.google.consented = true; try { localStorage.setItem("organitzam.gtoken", JSON.stringify({ token, exp })); } catch {} ok(token); },
         error_callback: (e) => ko(new Error(e.type || "error")),
       });
-      tc.requestAccessToken({ prompt: interactive ? "consent" : "" });
+      tc.requestAccessToken({ prompt: interactive && !S.google.consented ? "consent" : "" });
     });
   }
   async function api(path, opt = {}) {
     const r = await fetch(API + path, { ...opt, headers: { Authorization: "Bearer " + token, "content-type": "application/json" } });
-    if (r.status === 401) { token = null; throw new Error("sessió caducada"); }
+    if (r.status === 401) { token = null; try { localStorage.removeItem("organitzam.gtoken"); } catch {} throw new Error("sessió caducada"); }
     if (r.status === 204) return {};
     const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || "error " + r.status);
     return j;
@@ -61,7 +62,7 @@
   async function sync(interactive) {
     if (!on()) return;
     try { await auth(interactive); await pull(); }
-    catch (e) { msg = e.message === "popup_failed_to_open" || /interaction|popup|immediate|access_denied/.test(e.message) ? "Cal tornar a connectar (botó de sota)." : "Error: " + e.message; }
+    catch (e) { msg = e.message === "popup_failed_to_open" || /interaction|popup|immediate|access_denied/.test(e.message) ? "Sessió caducada: prem “Sincronitzar” per reconnectar." : "Error: " + e.message; }
     save();
   }
 
@@ -87,7 +88,7 @@
   };
   hooks.evDeleted = (ev) => { if (ev && ev.gid && on()) auth(false).then(() => api("/calendars/primary/events/" + ev.gid, { method: "DELETE" })).catch(() => toast("No s'ha esborrat de Google (torna a connectar)")); };
   hooks.sync = () => (token && Date.now() < exp ? sync(false) : null);
-  const prevStart = hooks.start; hooks.start = () => { prevStart && prevStart(); if (on()) sync(false).then(render); };
+  const prevStart = hooks.start; hooks.start = () => { prevStart && prevStart(); if (on() && token && Date.now() < exp) sync(false).then(render); };
 
   hooks.cals.push(() => {
     const n = S.events.filter((e) => String(e.cal || "").startsWith("g:")).length, ok = on();
@@ -107,7 +108,7 @@
       S.google = { clientId: id, connected: true }; save(); toast("Obrint Google…"); await sync(true); render();
     }
     if (a === "g-sync") { toast("Sincronitzant…"); await sync(true); render(); }
-    if (a === "g-off") { token = null; S.google.connected = false; S.events = S.events.filter((e) => !String(e.cal || "").startsWith("g:")); S.calendars = S.calendars.filter((c) => !c.google); save(); render(); }
+    if (a === "g-off") { token = null; try { localStorage.removeItem("organitzam.gtoken"); } catch {} S.google.connected = false; S.events = S.events.filter((e) => !String(e.cal || "").startsWith("g:")); S.calendars = S.calendars.filter((c) => !c.google); save(); render(); }
   });
   document.addEventListener("change", async (ev) => {
     const el = ev.target; if (el.dataset.act !== "g-cal") return;
