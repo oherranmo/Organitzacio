@@ -6,7 +6,7 @@ let webpush = null;
 try { webpush = require("web-push"); } catch { console.log("(sense web-push: executa `npm install` per activar les notificacions push)"); }
 const PORT = process.env.PORT || 8080, HOST = process.env.HOST || "127.0.0.1";
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
-const PUBLIC = new Set(["index.html", "style.css", "app.js", "ics.js", "routines.js", "push.js", "google.js", "sw.js", "icon.svg", "manifest.webmanifest"]);
+const PUBLIC = new Set(["index.html", "style.css", "app.js", "ics.js", "routines.js", "push.js", "google.js", "inbox.js", "sw.js", "icon.svg", "manifest.webmanifest"]);
 const VAPID_FILE = path.join(__dirname, "vapid.json"), DATA_FILE = path.join(__dirname, "data.json");
 
 const readJSON = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return d; } };

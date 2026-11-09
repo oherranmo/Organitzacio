@@ -99,9 +99,9 @@ function renderAlerts() {
 }
 
 /* ---------- Entrada ràpida (llenguatge natural) ---------- */
-function parseQuick(text) {
+function parseQuick(text, base) {
   let t = " " + text.trim() + " ", date = null, time = null;
-  const now = new Date(), day0 = Cal.startOfDay(now.getTime());
+  const now = base ? new Date(base) : new Date(), day0 = Cal.startOfDay(now.getTime());
   const cut = (re) => { const m = re.exec(t); if (m) t = t.replace(re, " "); return m; };
   let m;
   if ((m = cut(/\s(demà passat|passat demà)\s/i))) date = day0 + 2 * DAY;
@@ -113,7 +113,7 @@ function parseQuick(text) {
   if ((m = cut(/\s(?:a\s+les|a\s+la|a\s+l')\s*(\d{1,2})(?:[:.h](\d{2}))?\s*h?\s/i)) || (m = cut(/\s(\d{1,2})[:.](\d{2})\s/)) || (m = cut(/\s(\d{1,2})\s?h\s/i))) time = [+m[1], +(m[2] || 0)];
   const title = t.replace(/\s+/g, " ").trim() || text.trim();
   if (!date && !time) return { task: title };
-  if (!date) { const d = new Date(day0); d.setHours(time[0], time[1]); date = d.getTime() < Date.now() ? day0 + DAY : day0; }
+  if (!date) { const d = new Date(day0); d.setHours(time[0], time[1]); date = d.getTime() < now.getTime() ? day0 + DAY : day0; }
   const d = new Date(date);
   if (!time) return { event: { title, allDay: true, start: d.getTime(), end: d.getTime() + DAY } };
   d.setHours(time[0], time[1], 0, 0);

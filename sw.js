@@ -1,5 +1,5 @@
 const CACHE = "organitzam-v2";
-const FILES = ["./", "index.html", "style.css", "app.js", "ics.js", "routines.js", "push.js", "google.js", "icon.svg", "manifest.webmanifest"];
+const FILES = ["./", "index.html", "style.css", "app.js", "ics.js", "routines.js", "push.js", "google.js", "inbox.js", "icon.svg", "manifest.webmanifest"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== CACHE).map((x) => caches.delete(x)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
