@@ -37,7 +37,9 @@
     const list = (await api("/users/me/calendarList?minAccessRole=reader")).items || [];
     const min = new Date(Cal.startOfDay(Date.now()) - DAY).toISOString(), max = new Date(Date.now() + 60 * DAY).toISOString();
     const cals = [], events = [];
-    for (const c of list.filter((x) => x.selected !== false)) {
+    S.google.all = list.map((c) => ({ id: c.id, name: c.summaryOverride || c.summary, color: c.backgroundColor || COLORS[0] }));
+    if (!S.google.hidden) S.google.hidden = list.filter((c) => c.selected === false).map((c) => c.id); // primera vegada: els marcats a Google
+    for (const c of list.filter((x) => !S.google.hidden.includes(x.id))) {
       const cid = "g:" + c.id;
       cals.push({ id: cid, name: c.summaryOverride || c.summary, color: c.backgroundColor || COLORS[0], google: true });
       let pageToken = "";
@@ -91,6 +93,7 @@
     const n = S.events.filter((e) => String(e.cal || "").startsWith("g:")).length, ok = on();
     return `<h2>Google Calendar</h2><div class="card">
       ${ok ? `<div class="hint">✅ Connectat${S.google.lastSync ? " · sincronitzat " + hm(S.google.lastSync) + " · " + n + " esdeveniments (60 dies)" : ""}${token && Date.now() < exp ? "" : " · sessió en pausa"}</div>${msg ? `<div class="err">${esc(msg)}</div>` : ""}
+        <div class="hint" style="margin-top:8px">Calendaris a mostrar:</div>${(S.google.all || []).map((c) => `<label class="chk"><input type="checkbox" data-act="g-cal" data-id="${esc(c.id)}" ${(S.google.hidden || []).includes(c.id) ? "" : "checked"}><span class="dot" style="background:${esc(c.color)};margin:0"></span>${esc(c.name)}</label>`).join("")}
         <div class="row"><button class="primary" data-act="g-sync">↻ Sincronitzar</button><button class="danger" data-act="g-off">Desconnectar</button></div>`
       : `<label>ID de client de Google (OAuth, tipus “Aplicació web”)</label><input id="g-id" value="${esc(S.google.clientId)}" placeholder="xxxx.apps.googleusercontent.com">
         <div class="row" style="margin-top:12px"><button class="primary" data-act="g-on">Connectar amb Google</button></div>
@@ -105,5 +108,12 @@
     }
     if (a === "g-sync") { toast("Sincronitzant…"); await sync(true); render(); }
     if (a === "g-off") { token = null; S.google.connected = false; S.events = S.events.filter((e) => !String(e.cal || "").startsWith("g:")); S.calendars = S.calendars.filter((c) => !c.google); save(); render(); }
+  });
+  document.addEventListener("change", async (ev) => {
+    const el = ev.target; if (el.dataset.act !== "g-cal") return;
+    const h = new Set(S.google.hidden || []); el.checked ? h.delete(el.dataset.id) : h.add(el.dataset.id);
+    S.google.hidden = [...h]; save();
+    S.events = S.events.filter((e) => e.cal !== "g:" + el.dataset.id || el.checked); render();
+    if (el.checked) { await sync(false); render(); }
   });
 })();
