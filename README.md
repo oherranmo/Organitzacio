@@ -10,6 +10,9 @@ Agenda, recordatoris i tasques pensats per a persones amb TDAH. App web (PWA) en
 - **Tasques en passos petits** + temporitzador visual de focus (5/15/25 min).
 - **📲 Alarmes al mòbil**: exporta un esdeveniment com a `.ics` amb alarmes perquè avisi el calendari del telèfon encara que l'app estigui tancada.
 
+## Adreça publicada
+Aplicació (GitHub Pages): `https://oherranmo.github.io/<nom-del-repositori>/`
+
 ## Ús
 ```
 npm install      # només instal·la web-push (per a les notificacions push)
