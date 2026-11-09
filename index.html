@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Organitza'm</title>
+<meta name="theme-color" content="#2f6f6a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1 id="title">Ara</h1>
+  <span id="today-count" class="pill"></span>
+</header>
+
+<div id="alerts" aria-live="assertive"></div>
+
+<main id="view"></main>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="now" class="on"><span>🎯</span>Ara</button>
+  <button data-tab="agenda"><span>📅</span>Agenda</button>
+  <button data-tab="tasks"><span>✅</span>Tasques</button>
+  <button data-tab="cals"><span>🔗</span>Calendaris</button>
+</nav>
+
+<div id="toast" role="status"></div>
+
+<dialog id="dlg-event"><form method="dialog" id="f-event"></form></dialog>
+<dialog id="dlg-focus"><div id="focus"></div></dialog>
+
+<script src="ics.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

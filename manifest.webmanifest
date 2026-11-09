@@ -1,0 +1,11 @@
+{
+  "name": "Organitza'm",
+  "short_name": "Organitza'm",
+  "description": "Agenda, recordatoris i tasques pensats per a persones amb TDAH",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#2f6f6a",
+  "lang": "ca",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
