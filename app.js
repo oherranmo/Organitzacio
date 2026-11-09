@@ -11,10 +11,11 @@ const REMIND_OPTS = [[1440, "1 dia abans"], [180, "3 hores abans"], [60, "1 hora
 
 /* ---------- Estat ---------- */
 const KEY = "organitzam.v1";
-const defaults = () => ({ events: [], tasks: [], calendars: [], fired: {}, active: [], doneLog: [], settings: { remind: [60, 10, 0], sound: true } });
+const defaults = () => ({ events: [], tasks: [], calendars: [], fired: {}, active: [], doneLog: [], routines: [], routineDone: {}, google: { clientId: "" }, push: false, settings: { remind: [60, 10, 0], sound: true } });
 let S;
 try { S = { ...defaults(), ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { S = defaults(); }
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
+const hooks = { now: [], tasks: [], cals: [] };
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} if (hooks.saved) hooks.saved(); };
 
 /* ---------- Formats ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -87,6 +88,7 @@ function checkReminders() {
   // Recordatoris ajornats
   const snoozed = S.active.filter((a) => a.snoozeUntil && a.snoozeUntil <= now);
   if (snoozed.length) { snoozed.forEach((a) => { delete a.snoozeUntil; if (S.settings.sound) beep(); }); save(); renderAlerts(); }
+  if (hooks.tick) hooks.tick();
   Object.keys(S.fired).forEach((k) => { if (now - S.fired[k] > 3 * DAY) delete S.fired[k]; });
   save();
 }
@@ -134,7 +136,7 @@ const TITLES = { now: "Ara", agenda: "Agenda", tasks: "Tasques", cals: "Calendar
 
 function evRow(o, showDay) {
   const e = o.ev;
-  return `<div class="item" ${e.cal ? "" : `data-act="edit" data-id="${e.id}"`}>
+  return `<div class="item" ${e.cal ? "" : e.routine ? `data-act="redit" data-id="${e.routine}"` : `data-act="edit" data-id="${e.id}"`}>
     <span class="dot" style="background:${colorOf(e)}"></span>
     <span class="time">${e.allDay ? "tot el dia" : hm(o.start)}</span>
     <div class="t"><b>${esc(e.title)}</b><small>${showDay ? dayLabel(o.start) + " · " : ""}${e.location ? "📍 " + esc(e.location) + " · " : ""}${e.cal && calOf(e.cal) ? esc(calOf(e.cal).name) : ""}</small></div></div>`;
@@ -164,6 +166,7 @@ function viewNow() {
       <div class="sub">${isNow ? "acaba d'aquí " + human(left) : "d'aquí " + human(left) + " · " + hm(hero.start)}${hero.ev.location ? " · 📍 " + esc(hero.ev.location) : ""}</div>
       ${!isNow ? `<div class="bar" title="Com més ple, més a prop"><i style="width:${Math.round(gap * 100)}%"></i></div>` : ""}</div>`;
   } else h += `<div class="card hero"><div class="sub">PROPER</div><div class="big">Res programat 🎉</div><div class="sub">Aprofita per avançar una tasca petita.</div></div>`;
+  h += hooks.now.map((f) => f()).join("");
   const today = list.filter((o) => ymd(o.start) === ymd(now) && o !== hero);
   if (today.length) h += `<h2>Resta d'avui</h2><div class="card">${today.map((o) => evRow(o)).join("")}</div>`;
   const pri = S.tasks.filter((t) => t.today && !t.done);
@@ -185,12 +188,12 @@ function viewTasks() {
   return `<div class="capture"><input id="newtask" placeholder="Nova tasca…" enterkeyhint="send"><button class="primary" data-act="addtask">＋</button></div>
   <div class="hint">Truc: si una tasca fa mandra, parteix-la en passos de 5 minuts amb “＋ pas”.</div>
   <div class="card">${open.length ? open.map(taskRow).join("") : `<div class="empty">Res pendent 🎉</div>`}</div>
-  ${done.length ? `<h2>Fetes recentment</h2><div class="card">${done.map(taskRow).join("")}</div>` : ""}`;
+  ${done.length ? `<h2>Fetes recentment</h2><div class="card">${done.map(taskRow).join("")}</div>` : ""}${hooks.tasks.map((f) => f()).join("")}`;
 }
 function viewCals() {
   const perm = "Notification" in window ? Notification.permission : "unsupported";
   return `<h2>Els teus calendaris</h2>
-  <div class="card">${S.calendars.length ? S.calendars.map((c) => `<div class="cal item"><span class="dot" style="background:${c.color}"></span><div class="t"><b>${esc(c.name)}</b><small>${c.error ? `<span class="err">${esc(c.error)}</span>` : c.lastSync ? "Sincronitzat " + hm(c.lastSync) + " · " + S.events.filter((e) => e.cal === c.id).length + " esdeveniments" : "Sense sincronitzar"}</small></div>${c.url ? `<button data-act="sync" data-id="${c.id}">↻</button>` : ""}<button class="danger" data-act="delcal" data-id="${c.id}">✕</button></div>`).join("") : `<div class="empty">Encara no n'hi has connectat cap.</div>`}</div>
+  <div class="card">${S.calendars.filter((c) => !c.google).length ? S.calendars.filter((c) => !c.google).map((c) => `<div class="cal item"><span class="dot" style="background:${c.color}"></span><div class="t"><b>${esc(c.name)}</b><small>${c.error ? `<span class="err">${esc(c.error)}</span>` : c.lastSync ? "Sincronitzat " + hm(c.lastSync) + " · " + S.events.filter((e) => e.cal === c.id).length + " esdeveniments" : "Sense sincronitzar"}</small></div>${c.url ? `<button data-act="sync" data-id="${c.id}">↻</button>` : ""}<button class="danger" data-act="delcal" data-id="${c.id}">✕</button></div>`).join("") : `<div class="empty">Encara no n'hi has connectat cap.</div>`}</div>
   <h2>Connectar per enllaç (Google, Outlook, Apple…)</h2>
   <div class="card"><label>Nom</label><input id="cal-name" placeholder="Feina, Personal…"><label>Enllaç iCal (.ics)</label><input id="cal-url" inputmode="url" placeholder="https://calendar.google.com/…/basic.ics">
     <div class="row" style="margin-top:12px"><button class="primary" data-act="addcal">Connectar</button><button data-act="importfile">Importar fitxer .ics</button></div>
@@ -206,7 +209,7 @@ function viewCals() {
     <label class="chk"><input type="checkbox" data-act="sound" ${S.settings.sound ? "checked" : ""}>So i vibració</label>
     ${perm === "granted" ? `<div class="hint">🔔 Notificacions activades.</div>` : perm === "unsupported" ? `<div class="hint">Aquest navegador no suporta notificacions.</div>` : `<button class="primary" data-act="perm">🔔 Activar notificacions</button>`}
     <div class="hint" style="margin-top:10px">Els avisos salten mentre l'app és oberta (pot estar en segon pla). Per assegurar-te'n amb l'app tancada, usa “📲 Alarmes al mòbil” en un esdeveniment.</div></div>
-  <h2>Dades</h2><div class="card row"><button data-act="export">Exportar tot (.ics)</button><button data-act="backup">Còpia de seguretat</button></div>`;
+  ${hooks.cals.map((f) => f()).join("")}<h2>Dades</h2><div class="card row"><button data-act="export">Exportar tot (.ics)</button><button data-act="backup">Còpia de seguretat</button></div>`;
 }
 
 function render() {
@@ -235,7 +238,7 @@ function openEvent(id) {
   <div class="grid2"><div><label>Es repeteix</label><select id="e-rep"><option value="">No</option><option value="DAILY" ${rep === "DAILY" ? "selected" : ""}>Cada dia</option><option value="WEEKLY" ${rep === "WEEKLY" ? "selected" : ""}>Cada setmana</option><option value="MONTHLY" ${rep === "MONTHLY" ? "selected" : ""}>Cada mes</option><option value="YEARLY" ${rep === "YEARLY" ? "selected" : ""}>Cada any</option></select></div>
   <div><label>Temps de desplaçament (min)</label><input type="number" id="e-travel" min="0" step="5" value="${e.travel || 0}"></div></div>
   <label>Avisa'm</label>${REMIND_OPTS.map(([m, l]) => `<label class="chk"><input type="checkbox" class="e-rem" value="${m}" ${(e.remind || []).includes(m) ? "checked" : ""}>${l}</label>`).join("")}
-  <div class="hint">Amb desplaçament, t'avisarem també “Toca sortir!”.</div>
+  <div class="hint">Amb desplaçament, t'avisarem també “Toca sortir!”.</div>${hooks.evForm ? hooks.evForm(e) : ""}
   <div class="row" style="margin-top:16px"><button type="button" class="primary" id="e-save">Desar</button><button type="button" id="e-cancel" class="ghost">Cancel·la</button></div>
   ${id ? `<div class="row" style="margin-top:8px"><button type="button" id="e-ics">📲 Alarmes al mòbil</button><button type="button" class="danger" id="e-del">Esborrar</button></div>` : ""}`;
   const dlg = $("#dlg-event"), sync = () => ($("#e-times").hidden = $("#e-all").checked);
@@ -248,11 +251,13 @@ function openEvent(id) {
     if (all) end = start + DAY;
     else { const [fh, fm] = $("#e-from").value.split(":").map(Number), [th, tm] = $("#e-to").value.split(":").map(Number); start = new Date(y, mo - 1, d, fh, fm).getTime(); end = new Date(y, mo - 1, d, th, tm).getTime(); if (end <= start) end = start + HOUR; }
     const data = { title, allDay: all, start, end, location: $("#e-loc").value.trim(), travel: +$("#e-travel").value || 0, remind: [...document.querySelectorAll(".e-rem:checked")].map((c) => +c.value), rrule: $("#e-rep").value ? { freq: $("#e-rep").value, interval: 1 } : null };
-    if (id) Object.assign(S.events.find((x) => x.id === id), data); else S.events.push({ id: uid(), ...data });
+    let saved;
+    if (id) { saved = S.events.find((x) => x.id === id); Object.assign(saved, data); delete saved.tz; } else { saved = { id: uid(), ...data }; S.events.push(saved); }
+    if (hooks.evSaved) hooks.evSaved(saved, !!id);
     save(); dlg.close(); toast("Desat ✔"); render(); checkReminders();
   };
   if (id) {
-    $("#e-del").onclick = () => { if (confirm("Esborrar aquest esdeveniment?")) { S.events = S.events.filter((x) => x.id !== id); save(); dlg.close(); render(); } };
+    $("#e-del").onclick = () => { if (confirm("Esborrar aquest esdeveniment?")) { const gone = S.events.find((x) => x.id === id); S.events = S.events.filter((x) => x.id !== id); if (hooks.evDeleted) hooks.evDeleted(gone); save(); dlg.close(); render(); } };
     $("#e-ics").onclick = () => { const ev = S.events.find((x) => x.id === id); download(Cal.toICS([{ ...ev, remind: [...new Set([...(ev.remind || []), ...(ev.travel ? [ev.travel + 5] : [])])] }]), ev.title.replace(/\W+/g, "_") + ".ics"); toast("Obre el fitxer per afegir-lo al calendari del mòbil"); };
   }
   dlg.showModal();
@@ -306,7 +311,7 @@ async function syncCal(cal, quiet) {
   catch (err) { cal.error = "No s'ha pogut sincronitzar. Si és la primera vegada, obre l'app amb “node server.js” (vegeu README) — els navegadors bloquegen la lectura directa d'alguns calendaris."; }
   save(); if (!quiet) render();
 }
-const syncAll = () => Promise.all(S.calendars.filter((c) => c.url).map((c) => syncCal(c, true))).then(render);
+const syncAll = () => Promise.all([...S.calendars.filter((c) => c.url).map((c) => syncCal(c, true)), hooks.sync ? hooks.sync() : null]).then(render);
 
 /* ---------- Esdeveniments d'interfície ---------- */
 document.addEventListener("click", (ev) => {
@@ -362,4 +367,3 @@ render(); checkReminders(); syncAll();
 setInterval(() => { checkReminders(); if (tab === "now" && !document.activeElement.matches("input")) render(); }, 20000);
 setInterval(syncAll, 30 * MIN);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkReminders(); render(); } });
-if (window.__test) window.__test = { S, parseQuick, occ, checkReminders };

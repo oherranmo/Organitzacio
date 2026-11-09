@@ -1,0 +1,9 @@
+{
+  "name": "organitzam",
+  "version": "1.0.0",
+  "description": "Agenda i recordatoris per a TDAH",
+  "private": true,
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "web-push": "^3.6.7" },
+  "engines": { "node": ">=18" }
+}

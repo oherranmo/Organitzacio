@@ -22,7 +22,28 @@
     parts.forEach((p) => { const [k, v] = p.split("="); if (k) params[k.toUpperCase()] = (v || "").replace(/"/g, ""); });
     return { name, params, value };
   }
-  // Retorna {ms, allDay}. Els TZID es tracten com a hora local (aproximació).
+  // Hora de paret d'una zona (o local) -> ms UTC.
+  function tzOffset(ms, tz) {
+    const p = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(new Date(ms)).forEach((x) => (p[x.type] = +x.value));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+  }
+  function wallToMs(y, mo, d, h, mi, s, tz) {
+    if (!tz) return new Date(y, mo - 1, d, h, mi, s).getTime();
+    try {
+      const wall = Date.UTC(y, mo - 1, d, h, mi, s);
+      let g = wall - tzOffset(wall, tz);
+      g = wall - tzOffset(g, tz);
+      return g;
+    } catch { return new Date(y, mo - 1, d, h, mi, s).getTime(); }
+  }
+  function wallOf(ms, tz) {
+    if (!tz) { const d = new Date(ms); return { y: d.getFullYear(), mo: d.getMonth() + 1, d: d.getDate(), h: d.getHours(), mi: d.getMinutes(), s: d.getSeconds() }; }
+    const o = new Date(ms + tzOffset(ms, tz));
+    return { y: o.getUTCFullYear(), mo: o.getUTCMonth() + 1, d: o.getUTCDate(), h: o.getUTCHours(), mi: o.getUTCMinutes(), s: o.getUTCSeconds() };
+  }
+  // Retorna {ms, allDay, tz}. Amb TZID es converteix amb la zona real.
   function parseDate(value, params) {
     const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(value.trim());
     if (!m) return null;
@@ -30,8 +51,9 @@
     if (h === undefined || (params && params.VALUE === "DATE")) {
       return { ms: new Date(+y, +mo - 1, +d).getTime(), allDay: true };
     }
-    const ms = z ? Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s || 0)) : new Date(+y, +mo - 1, +d, +h, +mi, +(s || 0)).getTime();
-    return { ms, allDay: false };
+    if (z) return { ms: Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s || 0)), allDay: false };
+    const tz = params && params.TZID;
+    return { ms: wallToMs(+y, +mo, +d, +h, +mi, +(s || 0), tz), allDay: false, tz };
   }
   function parseDuration(v) {
     const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v);
@@ -76,7 +98,7 @@
         case "SUMMARY": cur.title = unescapeText(p.value); break;
         case "LOCATION": cur.location = unescapeText(p.value); break;
         case "STATUS": cur.status = p.value.toUpperCase(); break;
-        case "DTSTART": { const d = parseDate(p.value, p.params); if (d) { cur.start = d.ms; cur.allDay = d.allDay; } break; }
+        case "DTSTART": { const d = parseDate(p.value, p.params); if (d) { cur.start = d.ms; cur.allDay = d.allDay; if (d.tz) cur.tz = d.tz; } break; }
         case "DTEND": { const d = parseDate(p.value, p.params); if (d) { cur.end = d.ms; cur._hasEnd = true; } break; }
         case "DURATION": cur.dur = parseDuration(p.value); break;
         case "RRULE": cur.rrule = parseRrule(p.value); break;
@@ -88,10 +110,8 @@
 
   /* ---------- Recurrències ---------- */
   function startOfDay(ms) { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
-  function weekStart(ms) { const d = new Date(startOfDay(ms)); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); }
-  function dayDiff(a, b) { return Math.round((startOfDay(b) - startOfDay(a)) / DAY); }
 
-  // Ocurrències (inici, final) d'un esdeveniment dins [from, to).
+  // Ocurrències (inici, final) d'un esdeveniment dins [from, to). Respecta DST i la zona (ev.tz).
   function occurrences(ev, from, to) {
     const dur = (ev.end != null ? ev.end : ev.start) - ev.start;
     const out = [];
@@ -101,35 +121,29 @@
     };
     const r = ev.rrule;
     if (!r) { push(ev.start); return out; }
-    const s0 = new Date(ev.start);
-    const h = s0.getHours(), mi = s0.getMinutes(), sec = s0.getSeconds();
+    const tz = ev.allDay ? null : ev.tz;
+    const w = ev.allDay ? wallOf(ev.start) : wallOf(ev.start, tz);
+    const baseDow = new Date(Date.UTC(w.y, w.mo - 1, w.d)).getUTCDay();
+    const baseMon = (baseDow + 6) % 7;
     let count = 0;
-    const firstDay = startOfDay(ev.start);
-    const lastDay = Math.min(to, r.until ? r.until + DAY : to);
-    for (let day = firstDay, i = 0; day < lastDay && i < 6000; i++) {
-      const d = new Date(day);
+    for (let k = 0; k < 6000; k++) {
+      const wd = new Date(Date.UTC(w.y, w.mo - 1, w.d + k));
+      if (wd.getTime() - 2 * DAY > to) break;
+      const y = wd.getUTCFullYear(), mo = wd.getUTCMonth() + 1, d = wd.getUTCDate(), dow = wd.getUTCDay();
       let match = false;
-      const diff = dayDiff(firstDay, day);
-      if (r.freq === "DAILY") match = diff % r.interval === 0;
+      if (r.freq === "DAILY") match = k % r.interval === 0;
       else if (r.freq === "WEEKLY") {
-        const wk = Math.round((weekStart(day) - weekStart(firstDay)) / (7 * DAY));
-        const days = r.byday && r.byday.length ? r.byday : [s0.getDay()];
-        match = wk % r.interval === 0 && days.includes(d.getDay());
-      } else if (r.freq === "MONTHLY") {
-        const mo = (d.getFullYear() - s0.getFullYear()) * 12 + d.getMonth() - s0.getMonth();
-        match = mo % r.interval === 0 && d.getDate() === s0.getDate();
-      } else if (r.freq === "YEARLY") {
-        match = (d.getFullYear() - s0.getFullYear()) % r.interval === 0 && d.getMonth() === s0.getMonth() && d.getDate() === s0.getDate();
-      } else break;
-      if (match) {
-        const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, mi, sec).getTime();
-        if (s >= ev.start) {
-          count++;
-          if (r.count && count > r.count) break;
-          push(s);
-        }
-      }
-      const n = new Date(day); n.setDate(n.getDate() + 1); day = n.getTime();
+        const days = r.byday && r.byday.length ? r.byday : [baseDow];
+        match = Math.floor((k + baseMon) / 7) % r.interval === 0 && days.includes(dow);
+      } else if (r.freq === "MONTHLY") match = (((y - w.y) * 12 + mo - w.mo) % r.interval === 0) && d === w.d;
+      else if (r.freq === "YEARLY") match = (y - w.y) % r.interval === 0 && mo === w.mo && d === w.d;
+      else break;
+      if (!match) continue;
+      const s = ev.allDay ? new Date(y, mo - 1, d).getTime() : wallToMs(y, mo, d, w.h, w.mi, w.s, tz);
+      if (r.until && s > r.until) break;
+      count++;
+      if (r.count && count > r.count) break;
+      push(s);
     }
     return out;
   }
@@ -163,7 +177,7 @@
     return L.join("\r\n");
   }
 
-  const api = { parseICS, occurrences, toICS, startOfDay, DAY };
+  const api = { parseICS, occurrences, toICS, startOfDay, wallToMs, wallOf, DAY };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Cal = api;
 })(typeof window !== "undefined" ? window : globalThis);

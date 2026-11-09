@@ -12,10 +12,22 @@ Agenda, recordatoris i tasques pensats per a persones amb TDAH. App web (PWA) en
 
 ## Ús
 ```
-node server.js        # http://localhost:8080  (Node 18+)
+npm install      # només instal·la web-push (per a les notificacions push)
+node server.js   # http://localhost:8080  (Node 18+)
 ```
-També funciona obrint `index.html` amb qualsevol servidor estàtic, però el servidor inclòs fa de pont (`/proxy`) per llegir calendaris que el navegador no deixa descarregar directament (p. ex. Google). Per instal·lar-la al mòbil: obre-la des d'un servidor `https` i "Afegeix a la pantalla d'inici".
+El servidor serveix l'app, fa de pont (`/proxy`) per llegir calendaris `.ics` que el navegador bloqueja (CORS) i envia les notificacions push.
+Per instal·lar-la al mòbil i rebre push has d'allotjar-la amb **https** (un servei petit tipus Render/Fly/VPS, o un túnel com Cloudflare Tunnel) i obrir-la des d'allà → "Afegeix a la pantalla d'inici". Variables útils: `PORT`, `HOST` (`0.0.0.0` per exposar-la), `VAPID_SUBJECT` (`mailto:…`).
+
+## Funcions addicionals
+- **Rutines** (pestanya Tasques): llistes de passos que surten a "Ara" a l'hora que toca i t'avisen.
+- **Push**: Calendaris → "Activar push". El navegador envia al servidor els recordatoris dels propers 7 dies i el servidor te'ls fa arribar amb l'app tancada.
+- **Google Calendar bidireccional**: Calendaris → Google Calendar. Cal crear un ID de client OAuth propi (instruccions a l'app). Llegeix tots els calendaris i, en crear/editar/esborrar un esdeveniment, pot desar-lo a Google.
+- **Fusos horaris** (`TZID`) i canvis d'hora (estiu/hivern) gestionats amb la zona real.
+
+## Estat de les proves
+Provat: parser iCal, recurrències i DST, interfície al navegador, entrada ràpida, recordatoris i rutines, enviament del servidor push fins a la crida al servei de push. **No provat amb comptes reals**: Google OAuth/Calendar API i la recepció de push en un telèfon (requereixen credencials i https).
 
 ## Limitacions
-- Els avisos salten mentre l'app és oberta (pot ser en segon pla). Amb l'app tancada cal l'opció d'alarmes `.ics` o un servidor de notificacions push (pendent).
-- Connexió de només lectura; no escriu als teus calendaris. Els fusos horaris (`TZID`) es tracten com a hora local.
+- Per a push amb l'app tancada cal el servidor en marxa. Sense servidor: els avisos salten mentre l'app és oberta o amb l'exportació `.ics` amb alarmes.
+- Els calendaris per enllaç iCal són de només lectura; l'escriptura és només per Google.
+- A iPhone, push només funciona amb l'app instal·lada a la pantalla d'inici (iOS 16.4+).
